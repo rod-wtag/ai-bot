@@ -11,8 +11,11 @@ jobs:
 
     steps:
       # Step 1: Checkout code
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0           # fetch full history
+          ref: ${{ github.event.pull_request.head.ref }}  # checkout PR branch
 
       # Step 2: Set up Node.js (for using a JS script to call OpenAI)
       - name: Setup Node.js

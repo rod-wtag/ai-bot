@@ -25,7 +25,7 @@ let codeToReview = "";
 for (const file of files) {
   if (file.status === "added" || file.status === "modified") {
     // Get raw file content
-    const content = execSync(`git show origin/main:${file.filename}`, { encoding: "utf8" }).toString();
+    const content = execSync(`git show HEAD:${file.filename}`, { encoding: "utf8" }).toString();
     codeToReview += `File: ${file.filename}\n${content}\n\n`;
   }
 }
