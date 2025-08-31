@@ -37,7 +37,7 @@ try {
 let aiResponse;
 try {
   const completion = await client.chat.completions.create({
-    model: "mistralai/Mistral-7B-Instruct", // free Hugging Face model
+    model: "HuggingFaceH4/zephyr-7b-beta", // free Hugging Face model
     messages: [
       {
         role: "system",
