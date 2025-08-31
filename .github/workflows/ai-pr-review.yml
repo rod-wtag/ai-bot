@@ -22,7 +22,13 @@ jobs:
 
       # Step 3: Install dependencies
       - name: Install dependencies
-        run: npm install openai
+        run: |
+          # Initialize a temporary package.json to manage dependencies
+          cd .github/scripts
+          npm init -y
+          
+          # Install OpenAI and Octokit packages
+          npm install openai @octokit/rest
 
       # Step 4: Run AI review
       - name: Run AI code review
