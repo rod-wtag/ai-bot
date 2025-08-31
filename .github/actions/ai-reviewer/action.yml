@@ -1,0 +1,28 @@
+name: 'AI Code Companion'
+description: 'Automated AI-powered code review for pull requests'
+author: 'MegaMind'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+  api-endpoint:
+    description: 'Backend API endpoint'
+    required: true
+  openai-api-key:
+    description: 'OpenAI API key for AI reviews'
+    required: true
+  review-level:
+    description: 'Review strictness level (light/standard/strict)'
+    default: 'standard'
+  custom-rules:
+    description: 'Path to custom linting rules file'
+    default: '.ai-companion/rules.json'
+
+runs:
+  using: 'node20'
+  main: 'index.js'
+
+branding:
+  icon: 'code'
+  color: 'blue'
