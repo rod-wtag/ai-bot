@@ -1,53 +1,71 @@
 import { execSync } from "child_process";
-import { Octokit } from "@octokit/rest";
 import OpenAI from "openai";
+import { Octokit } from "@octokit/rest";
 
-// Get PR info from env
-const repoFullName = process.env.REPO; // e.g., "user/repo"
-const prNumber = process.env.PR_NUMBER;
+// === 1. Setup GitHub + HuggingFace ===
 const githubToken = process.env.GITHUB_TOKEN;
+const hfToken = process.env.HF_TOKEN;
+const prNumber = process.env.PR_NUMBER;
+const repo = process.env.GITHUB_REPOSITORY;
 
-// Initialize Octokit (GitHub API)
-const octokit = new Octokit({ auth: githubToken });
-
-// Initialize OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// 1️⃣ Get list of changed files in the PR
-const { data: files } = await octokit.rest.pulls.listFiles({
-  owner: repoFullName.split("/")[0],
-  repo: repoFullName.split("/")[1],
-  pull_number: prNumber,
-});
-
-let codeToReview = "";
-
-for (const file of files) {
-  if (file.status === "added" || file.status === "modified") {
-    // Get raw file content
-    const content = execSync(`git show HEAD:${file.filename}`, { encoding: "utf8" }).toString();
-    codeToReview += `File: ${file.filename}\n${content}\n\n`;
-  }
+if (!githubToken || !hfToken) {
+  console.error("❌ Missing GITHUB_TOKEN or HF_TOKEN");
+  process.exit(1);
 }
 
-// 2️⃣ Ask AI to review the code
-const reviewPrompt = `
-You are an expert code reviewer. Review the following code and provide constructive comments or suggestions:
+const [owner, repoName] = repo.split("/");
+const octokit = new Octokit({ auth: githubToken });
 
-${codeToReview}
-
-Respond in markdown format.
-`;
-
-const response = await openai.chat.completions.create({
-  model: "GPT-3.5",
-  messages: [{ role: "user", content: reviewPrompt }],
+// Hugging Face OpenAI-compatible client
+const client = new OpenAI({
+  baseURL: "https://router.huggingface.co/v1",
+  apiKey: hfToken,
 });
 
-// 3️⃣ Post AI review as a comment
-await octokit.rest.issues.createComment({
-  owner: repoFullName.split("/")[0],
-  repo: repoFullName.split("/")[1],
-  issue_number: prNumber,
-  body: response.choices[0].message.content,
-});
+// === 2. Get PR diff ===
+let diff;
+try {
+  diff = execSync(`git fetch origin pull/${prNumber}/head:pr-${prNumber} && git diff origin/main...pr-${prNumber}`, {
+    encoding: "utf-8",
+  });
+} catch (err) {
+  console.error("❌ Failed to fetch PR diff:", err.message);
+  process.exit(1);
+}
+
+// === 3. Send diff to AI ===
+let aiResponse;
+try {
+  const completion = await client.chat.completions.create({
+    model: "mistralai/Mistral-7B-Instruct", // free Hugging Face model
+    messages: [
+      {
+        role: "system",
+        content: "You are a senior code reviewer. Provide constructive, concise feedback on code diffs.",
+      },
+      {
+        role: "user",
+        content: `Please review this pull request diff and suggest improvements:\n\n${diff}`,
+      },
+    ],
+  });
+
+  aiResponse = completion.choices[0].message.content;
+} catch (err) {
+  console.error("❌ AI request failed:", err);
+  process.exit(1);
+}
+
+// === 4. Post review as PR comment ===
+try {
+  await octokit.issues.createComment({
+    owner,
+    repo: repoName,
+    issue_number: prNumber,
+    body: `🤖 **AI Code Review**\n\n${aiResponse}`,
+  });
+  console.log("✅ AI review posted successfully!");
+} catch (err) {
+  console.error("❌ Failed to post PR comment:", err.message);
+  process.exit(1);
+}
