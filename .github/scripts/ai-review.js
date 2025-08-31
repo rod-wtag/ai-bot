@@ -49,7 +49,7 @@ try {
   console.log("🤖 Sending request to Hugging Face...");
   
   const completion = await client.chat.completions.create({
-    model: "meta-llama/Llama-3.2-3B-Instruct", // More reliable model
+    model: "microsoft/codereviewer", // More reliable model
     messages: [
       {
         role: "system",
