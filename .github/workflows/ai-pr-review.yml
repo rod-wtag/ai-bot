@@ -1,0 +1,44 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0           # fetch full history
+          ref: ${{ github.event.pull_request.head.ref }}  # checkout PR branch
+
+      # Step 2: Set up Node.js (for using a JS script to call OpenAI)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: |
+          # Initialize a temporary package.json to manage dependencies
+          cd .github/scripts
+          npm init -y
+          
+          # Install OpenAI and Octokit packages
+          npm install openai @octokit/rest
+
+      # Step 4: Run AI review
+      - name: Run AI code review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node .github/scripts/ai-review.js
