@@ -1,0 +1,7 @@
+{
+    "type": "module",
+    "dependencies": {
+        "openai": "^5.0.0",
+        "@octokit/rest": "^20.0.0"
+    }
+}
