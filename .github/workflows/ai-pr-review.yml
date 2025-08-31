@@ -35,7 +35,7 @@ jobs:
           npm init -y
           
           # Install OpenAI and Octokit packages
-          npm install openai @octokit/rest
+          npm install openai @octokit/rest axios
 
       # Step 4: Run AI review
       - name: Run AI code review

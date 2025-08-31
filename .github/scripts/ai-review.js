@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import OpenAI from "openai";
+import axios from "axios";
 import { Octokit } from "@octokit/rest";
 
 // === 1. Setup GitHub + HuggingFace ===
@@ -9,18 +9,12 @@ const prNumber = process.env.PR_NUMBER;
 const repo = process.env.GITHUB_REPOSITORY;
 
 if (!githubToken || !hfToken) {
-  console.error("❌ Missing GITHUB_TOKEN or HF_TOKEN");
+  console.error(":x: Missing GITHUB_TOKEN or HF_TOKEN");
   process.exit(1);
 }
 
 const [owner, repoName] = repo.split("/");
 const octokit = new Octokit({ auth: githubToken });
-
-// Hugging Face OpenAI-compatible client with better error handling
-const client = new OpenAI({
-  baseURL: "https://api-inference.huggingface.co/v1",
-  apiKey: hfToken,
-});
 
 // === 2. Get PR diff ===
 let diff;
@@ -30,7 +24,7 @@ try {
   });
   
   if (!diff || diff.trim().length === 0) {
-    console.log("⚠️ No diff found - PR may be empty or already merged");
+    console.log(":warning: No diff found - PR may be empty or already merged");
     process.exit(0);
   }
   
@@ -39,58 +33,75 @@ try {
     diff = diff.substring(0, 10000) + "\n\n... (diff truncated due to length)";
   }
 } catch (err) {
-  console.error("❌ Failed to fetch PR diff:", err.message);
+  console.error(":x: Failed to fetch PR diff:", err.message);
   process.exit(1);
 }
 
-// === 3. Send diff to AI with improved error handling ===
-let aiResponse;
-try {
-  console.log("🤖 Sending request to Hugging Face...");
-  
-  const completion = await client.chat.completions.create({
-    model: "microsoft/codereviewer", // More reliable model
-    messages: [
+// === 3. Send diff to Hugging Face model with proper API format ===
+async function getAIReview() {
+  try {
+    console.log(":robot_face: Sending request to Hugging Face...");
+    
+    // Use a text generation model that's available for inference API
+    // CodeLlama is a good choice for code review
+    const MODEL_ID = "codellama/CodeLlama-7b-hf"; // You can also try "bigcode/starcoder" or other code-specific models
+    
+    const response = await axios.post(
+      `https://api-inference.huggingface.co/models/${MODEL_ID}`,
       {
-        role: "system",
-        content: "You are a senior code reviewer. Provide constructive, concise feedback on code diffs. Focus on potential bugs, security issues, performance concerns, and code quality improvements.",
+        inputs: `You are a senior code reviewer. Please review the following code diff and provide specific, helpful feedback on potential bugs, security issues, and code quality improvements:\n\n\`\`\`diff\n${diff}\n\`\`\`\n\nYour review:`,
+        parameters: {
+          max_new_tokens: 1000,
+          temperature: 0.3,
+          return_full_text: false
+        }
       },
       {
-        role: "user",
-        content: `Please review this pull request diff and suggest improvements:\n\n\`\`\`diff\n${diff}\n\`\`\``,
-      },
-    ],
-    max_tokens: 1000,
-    temperature: 0.3,
-    stream: false,
-  });
-
-  aiResponse = completion.choices[0]?.message?.content;
-  
-  if (!aiResponse) {
-    throw new Error("No response content received from AI");
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${hfToken}`
+        }
+      }
+    );
+    
+    console.log(":white_check_mark: AI response received");
+    
+    // Extract the generated text
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      return response.data[0].generated_text;
+    } else if (response.data.generated_text) {
+      return response.data.generated_text;
+    } else {
+      console.log("Unexpected API response format:", JSON.stringify(response.data));
+      return "AI review service returned an unexpected response format. Please review this PR manually.";
+    }
+  } catch (err) {
+    console.error(":x: AI request failed:", err.message);
+    if (err.response) {
+      console.error("API response:", JSON.stringify(err.response.data));
+    }
+    
+    // Fallback response
+    return ":warning: AI review service temporarily unavailable. Please review this PR manually.";
   }
-  
-  console.log("✅ AI response received");
-} catch (err) {
-  console.error("❌ AI request failed:", err);
-  console.error("Full error details:", JSON.stringify(err, null, 2));
-  
-  // Fallback response
-  aiResponse = "⚠️ AI review service temporarily unavailable. Please review this PR manually.";
 }
 
 // === 4. Post review as PR comment ===
-try {
-  await octokit.issues.createComment({
-    owner,
-    repo: repoName,
-    issue_number: parseInt(prNumber),
-    body: `🤖 **AI Code Review**\n\n${aiResponse}`,
-  });
-  console.log("✅ AI review posted successfully!");
-} catch (err) {
-  console.error("❌ Failed to post PR comment:", err.message);
-  process.exit(1);
+async function main() {
+  try {
+    const aiResponse = await getAIReview();
+    
+    await octokit.issues.createComment({
+      owner,
+      repo: repoName,
+      issue_number: parseInt(prNumber),
+      body: `:robot_face: **AI Code Review**\n\n${aiResponse}`,
+    });
+    console.log(":white_check_mark: AI review posted successfully!");
+  } catch (err) {
+    console.error(":x: Failed to post PR comment:", err.message);
+    process.exit(1);
+  }
 }
 
+main();
