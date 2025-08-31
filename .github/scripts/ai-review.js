@@ -1,95 +1,79 @@
-import { execSync } from "child_process";
 import OpenAI from "openai";
-import { Octokit } from "@octokit/rest";
 
-// === 1. Setup GitHub + HuggingFace ===
-const githubToken = process.env.GITHUB_TOKEN;
 const hfToken = process.env.HF_TOKEN;
-const prNumber = process.env.PR_NUMBER;
-const repo = process.env.GITHUB_REPOSITORY;
 
-if (!githubToken || !hfToken) {
-  console.error("❌ Missing GITHUB_TOKEN or HF_TOKEN");
+if (!hfToken) {
+  console.error("❌ HF_TOKEN not found");
   process.exit(1);
 }
 
-const [owner, repoName] = repo.split("/");
-const octokit = new Octokit({ auth: githubToken });
+console.log("🔍 Testing HuggingFace connection...");
+console.log("Token format:", hfToken.startsWith("hf_") ? "✅ Correct" : "❌ Should start with 'hf_'");
 
-// Hugging Face OpenAI-compatible client with better error handling
 const client = new OpenAI({
   baseURL: "https://api-inference.huggingface.co/v1",
   apiKey: hfToken,
 });
 
-// === 2. Get PR diff ===
-let diff;
+// Test 1: List available models
+console.log("\n📋 Testing model list...");
 try {
-  diff = execSync(`git fetch origin pull/${prNumber}/head:pr-${prNumber} && git diff origin/main...pr-${prNumber}`, {
-    encoding: "utf-8",
-  });
-  
-  if (!diff || diff.trim().length === 0) {
-    console.log("⚠️ No diff found - PR may be empty or already merged");
-    process.exit(0);
-  }
-  
-  // Limit diff size to avoid token limits
-  if (diff.length > 10000) {
-    diff = diff.substring(0, 10000) + "\n\n... (diff truncated due to length)";
-  }
+  const models = await client.models.list();
+  console.log("✅ Models endpoint working");
+  console.log("Available models count:", models.data?.length || 0);
 } catch (err) {
-  console.error("❌ Failed to fetch PR diff:", err.message);
-  process.exit(1);
+  console.error("❌ Models list failed:", err.message);
+  console.error("Status:", err.status);
 }
 
-// === 3. Send diff to AI with improved error handling ===
-let aiResponse;
-try {
-  console.log("🤖 Sending request to Hugging Face...");
-  
-  const completion = await client.chat.completions.create({
-    model: "meta-llama/Llama-3.2-3B-Instruct", // More reliable model
-    messages: [
-      {
-        role: "system",
-        content: "You are a senior code reviewer. Provide constructive, concise feedback on code diffs. Focus on potential bugs, security issues, performance concerns, and code quality improvements.",
-      },
-      {
-        role: "user",
-        content: `Please review this pull request diff and suggest improvements:\n\n\`\`\`diff\n${diff}\n\`\`\``,
-      },
-    ],
-    max_tokens: 1000,
-    temperature: 0.3,
-    stream: false,
-  });
+// Test 2: Simple chat completion
+console.log("\n💬 Testing chat completion...");
+const testModels = [
+  "meta-llama/Llama-3.2-1B-Instruct",
+  "microsoft/DialoGPT-medium", 
+  "HuggingFaceH4/zephyr-7b-beta",
+  "meta-llama/Llama-3.2-3B-Instruct"
+];
 
-  aiResponse = completion.choices[0]?.message?.content;
-  
-  if (!aiResponse) {
-    throw new Error("No response content received from AI");
+for (const model of testModels) {
+  try {
+    console.log(`\n🧪 Testing ${model}...`);
+    
+    const completion = await client.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "user",
+          content: "Say 'Hello' in exactly one word.",
+        },
+      ],
+      max_tokens: 5,
+      temperature: 0.1,
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    console.log(`✅ ${model} works: "${response}"`);
+    break; // Use the first working model
+  } catch (err) {
+    console.error(`❌ ${model} failed:`, err.message);
+    if (err.status) console.error(`   Status: ${err.status}`);
   }
-  
-  console.log("✅ AI response received");
-} catch (err) {
-  console.error("❌ AI request failed:", err);
-  console.error("Full error details:", JSON.stringify(err, null, 2));
-  
-  // Fallback response
-  aiResponse = "⚠️ AI review service temporarily unavailable. Please review this PR manually.";
 }
 
-// === 4. Post review as PR comment ===
+// Test 3: Check token permissions
+console.log("\n🔐 Testing token permissions...");
 try {
-  await octokit.issues.createComment({
-    owner,
-    repo: repoName,
-    issue_number: parseInt(prNumber),
-    body: `🤖 **AI Code Review**\n\n${aiResponse}`,
+  const response = await fetch("https://huggingface.co/api/whoami", {
+    headers: { Authorization: `Bearer ${hfToken}` }
   });
-  console.log("✅ AI review posted successfully!");
+  
+  if (response.ok) {
+    const data = await response.json();
+    console.log("✅ Token valid for user:", data.name);
+    console.log("Token type:", data.type);
+  } else {
+    console.error("❌ Token validation failed:", response.status);
+  }
 } catch (err) {
-  console.error("❌ Failed to post PR comment:", err.message);
-  process.exit(1);
+  console.error("❌ Token check failed:", err.message);
 }
