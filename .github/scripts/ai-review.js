@@ -34,27 +34,29 @@ try {
 }
 
 // === 3. Send diff to AI ===
-let aiResponse;
-try {
-  const completion = await client.chat.completions.create({
-    model: "HuggingFaceH4/zephyr-7b-beta", // free Hugging Face model
-    messages: [
-      {
-        role: "system",
-        content: "You are a senior code reviewer. Provide constructive, concise feedback on code diffs.",
-      },
-      {
-        role: "user",
-        content: `Please review this pull request diff and suggest improvements:\n\n${diff}`,
-      },
-    ],
-  });
+// let aiResponse;
+// try {
+//   const completion = await client.chat.completions.create({
+//     model: "HuggingFaceH4/zephyr-7b-beta", // free Hugging Face model
+//     messages: [
+//       {
+//         role: "system",
+//         content: "You are a senior code reviewer. Provide constructive, concise feedback on code diffs.",
+//       },
+//       {
+//         role: "user",
+//         content: `Please review this pull request diff and suggest improvements:\n\n${diff}`,
+//       },
+//     ],
+//   });
 
-  aiResponse = completion.choices[0].message.content;
-} catch (err) {
-  console.error("❌ AI request failed:", err);
-  process.exit(1);
-}
+//   aiResponse = completion.choices[0].message.content;
+// } catch (err) {
+//   console.error("❌ AI request failed:", err);
+//   process.exit(1);
+// }
+
+let aiResponse = "Temp comment"
 
 // === 4. Post review as PR comment ===
 try {
