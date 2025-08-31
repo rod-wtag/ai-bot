@@ -40,7 +40,7 @@ Respond in markdown format.
 `;
 
 const response = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
+  model: "GPT-3.5",
   messages: [{ role: "user", content: reviewPrompt }],
 });
 
